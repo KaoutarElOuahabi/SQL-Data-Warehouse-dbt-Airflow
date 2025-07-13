@@ -1,0 +1,37 @@
+
+# dbt_project/dbt_project.yml
+# Ce fichier sera généré par 'dbt init', mais voici le contenu que vous devriez avoir.
+# Après 'dbt init', assurez-vous que ce contenu est dans enterprise_dw/dbt_project.yml
+
+name: 'enterprise_dw'
+version: '1.0.0'
+config-version: 2
+
+profile: 'enterprise_dw'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  enterprise_dw:
+    # Configuration par défaut pour tous les modèles dans ce projet
+    +schema: silver # Tous les modèles iront par défaut dans le schéma 'silver'
+    +materialized: table # Par défaut, les modèles seront des tables
+
+    # Overrides pour des sous-dossiers spécifiques
+    staging:
+      +schema: bronze # Les modèles de staging peuvent être matérialisés dans bronze (ou un schéma 'raw')
+      +materialized: view # Souvent, les modèles de staging sont des vues
+
+    marts:
+      +schema: gold # Les marts (couche Gold) iront dans le schéma 'gold'
+      +materialized: table # Les marts sont presque toujours des tables

@@ -1,0 +1,152 @@
+
+# SQL-Data-Warehouse-dbt-Airflow/docker-compose.yml
+# Fichier de configuration Docker Compose pour l'environnement de développement local.
+# Il définit et configure les services : SQL Server DW, PostgreSQL (Airflow DB),
+# Airflow (webserver, scheduler, worker), et dbt CLI.
+
+version: '3.8'
+
+services:
+  # --- 1. SQL Server Data Warehouse ---
+  sqlserver_dw:
+    image: mcr.microsoft.com/mssql/server:2019-latest # Ou 2022-latest
+    container_name: sqlserver_dw
+    ports:
+      - "1433:1433" # Mappe le port 1433 du conteneur au port 1433 de votre machine hôte
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "$${MSSQL_SA_PASSWORD}"
+      MSSQL_PID: "Developer" # Spécifie l'édition (Developer, Express, Standard, Enterprise)
+    volumes:
+      - sqlserver_data:/var/opt/mssql # Persiste les données de SQL Server
+      - ./sqlserver_init:/usr/src/app/sqlserver_init # Monte le dossier d'initialisation
+    command: >
+      /bin/bash -c "
+      /opt/mssql/bin/sqlservr &
+      /opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P '\$(MSSQL_SA_PASSWORD)' -i /usr/src/app/sqlserver_init/01_create_database_and_schemas.sql -v MSSQL_DB_NAME='\$(MSSQL_DB_NAME)' MSSQL_USER='\$(MSSQL_USER)' MSSQL_PASSWORD='\$(MSSQL_PASSWORD)'
+      wait"
+    healthcheck:
+      test: ["CMD", "/opt/mssql-tools/bin/sqlcmd", "-S", "localhost", "-U", "SA", "-P", "$${MSSQL_SA_PASSWORD}", "-Q", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # --- 2. PostgreSQL (Airflow Metadata Database) ---
+  postgres_airflow:
+    image: postgres:13
+    container_name: postgres_airflow
+    environment:
+      POSTGRES_USER: "$${AIRFLOW_DB_USER}"
+      POSTGRES_PASSWORD: "$${AIRFLOW_DB_PASSWORD}"
+      POSTGRES_DB: "$${AIRFLOW_DB_NAME}"
+    volumes:
+      - postgres_airflow_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${AIRFLOW_DB_USER} -d $${AIRFLOW_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # --- 3. Airflow Webserver ---
+  airflow_webserver:
+    build:
+      context: ./airflow # Utilise le Dockerfile dans le dossier airflow
+      dockerfile: Dockerfile
+    container_name: airflow_webserver
+    ports:
+      - "$${AIRFLOW_WEBSERVER_PORT}:8080" # Accès à l'interface Airflow
+    environment:
+      # Variables d'environnement pour Airflow
+      AIRFLOW_HOME: "$${AIRFLOW_PROJ_DIR}"
+      AIRFLOW_UID: "$${AIRFLOW_UID}"
+      AIRFLOW_DATABASE_SQL_ALCHEMY_CONN: postgresql://$${AIRFLOW_DB_USER}:$${AIRFLOW_DB_PASSWORD}@postgres_airflow:5432/$${AIRFLOW_DB_NAME}
+      AIRFLOW_WEBSERVER_HOST: 0.0.0.0
+      # Variables pour dbt (passées aux conteneurs Airflow)
+      MSSQL_DB_NAME: "$${MSSQL_DB_NAME}"
+      MSSQL_USER: "$${MSSQL_USER}"
+      MSSQL_PASSWORD: "$${MSSQL_PASSWORD}"
+      DBT_PROFILES_DIR: "$${DBT_PROFILES_DIR}" # Chemin pour dbt profiles.yml
+    volumes:
+      - ./airflow/dags:$${AIRFLOW_PROJ_DIR}/dags # Monte vos DAGs
+      - ./airflow/logs:$${AIRFLOW_PROJ_DIR}/logs # Pour les logs d'Airflow
+      - ./dbt_project:$${DBT_PROFILES_DIR} # Monte votre projet dbt
+    depends_on:
+      postgres_airflow:
+        condition: service_healthy
+      sqlserver_dw: # Dépendance sur SQL Server pour que dbt puisse s'y connecter
+        condition: service_healthy
+    command: webserver
+    restart: unless-stopped
+
+  # --- 4. Airflow Scheduler ---
+  airflow_scheduler:
+    build:
+      context: ./airflow
+      dockerfile: Dockerfile
+    container_name: airflow_scheduler
+    environment:
+      AIRFLOW_HOME: "$${AIRFLOW_PROJ_DIR}"
+      AIRFLOW_UID: "$${AIRFLOW_UID}"
+      AIRFLOW_DATABASE_SQL_ALCHEMY_CONN: postgresql://$${AIRFLOW_DB_USER}:$${AIRFLOW_DB_PASSWORD}@postgres_airflow:5432/$${AIRFLOW_DB_NAME}
+      MSSQL_DB_NAME: "$${MSSQL_DB_NAME}"
+      MSSQL_USER: "$${MSSQL_USER}"
+      MSSQL_PASSWORD: "$${MSSQL_PASSWORD}"
+      DBT_PROFILES_DIR: "$${DBT_PROFILES_DIR}"
+    volumes:
+      - ./airflow/dags:$${AIRFLOW_PROJ_DIR}/dags
+      - ./airflow/logs:$${AIRFLOW_PROJ_DIR}/logs
+      - ./dbt_project:$${DBT_PROFILES_DIR}
+    depends_on:
+      airflow_webserver:
+        condition: service_started # Le scheduler a besoin du webserver pour la DB init
+    command: scheduler
+    restart: unless-stopped
+
+  # --- 5. Airflow Worker ---
+  airflow_worker:
+    build:
+      context: ./airflow
+      dockerfile: Dockerfile
+    container_name: airflow_worker
+    environment:
+      AIRFLOW_HOME: "$${AIRFLOW_PROJ_DIR}"
+      AIRFLOW_UID: "$${AIRFLOW_UID}"
+      AIRFLOW_DATABASE_SQL_ALCHEMY_CONN: postgresql://$${AIRFLOW_DB_USER}:$${AIRFLOW_DB_PASSWORD}@postgres_airflow:5432/$${AIRFLOW_DB_NAME}
+      MSSQL_DB_NAME: "$${MSSQL_DB_NAME}"
+      MSSQL_USER: "$${MSSQL_USER}"
+      MSSQL_PASSWORD: "$${MSSQL_PASSWORD}"
+      DBT_PROFILES_DIR: "$${DBT_PROFILES_DIR}"
+    volumes:
+      - ./airflow/dags:$${AIRFLOW_PROJ_DIR}/dags
+      - ./airflow/logs:$${AIRFLOW_PROJ_DIR}/logs
+      - ./dbt_project:$${DBT_PROFILES_DIR}
+    depends_on:
+      airflow_scheduler:
+        condition: service_started
+    command: worker
+    restart: unless-stopped
+
+  # --- 6. dbt CLI (pour exécution manuelle ou debug) ---
+  dbt_cli:
+    build:
+      context: ./airflow # Réutilise l'image Airflow car elle a déjà dbt installé
+      dockerfile: Dockerfile
+    container_name: dbt_cli
+    environment:
+      MSSQL_DB_NAME: "$${MSSQL_DB_NAME}"
+      MSSQL_USER: "$${MSSQL_USER}"
+      MSSQL_PASSWORD: "$${MSSQL_PASSWORD}"
+      DBT_PROFILES_DIR: "$${DBT_PROFILES_DIR}"
+    volumes:
+      - ./dbt_project:$${DBT_PROFILES_DIR} # Monte votre projet dbt
+    depends_on:
+      sqlserver_dw:
+        condition: service_healthy
+    command: ["tail", "-f", "/dev/null"] # Garde le conteneur en vie pour pouvoir y entrer manuellement
+    restart: unless-stopped
+
+volumes:
+  sqlserver_data:
+  postgres_airflow_data:

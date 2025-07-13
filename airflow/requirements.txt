@@ -1,0 +1,6 @@
+
+# airflow/requirements.txt
+apache-airflow[cncf.kubernetes,celery,postgres,google,microsoft.azure]==2.8.1
+dbt-sqlserver
+pyodbc
+psycopg2-binary # Pour la connexion à PostgreSQL par Airflow

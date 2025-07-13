@@ -1,0 +1,30 @@
+
+# dbt_project/profiles.yml.template
+# Ce template sera traité par Airflow pour générer le profiles.yml final
+# avec les variables d'environnement du conteneur.
+
+enterprise_dw: # IMPORTANT: Ce nom doit correspondre au 'name:' dans dbt_project.yml
+  target: dev
+  outputs:
+    dev:
+      type: sqlserver
+      driver: 'ODBC Driver 17 for SQL Server' # Driver ODBC
+      server: sqlserver_dw # Le nom du service SQL Server dans docker-compose
+      port: 1433
+      database: "{ env_var('MSSQL_DB_NAME') }"
+      schema: silver # Schéma par défaut pour les modèles non spécifiés
+      user: "{ env_var('MSSQL_USER') }"
+      password: "{ env_var('MSSQL_PASSWORD') }"
+      trust_cert: True # Recommandé pour les connexions Docker/développement
+      encrypt: True # Recommandé pour la sécurité
+      threads: 4 # Nombre de threads dbt pour l'exécution parallèle
+
+    # Vous pourriez avoir un profil de production ici qui pointe vers Azure
+    # prod:
+    #   type: sqlserver
+    #   ...
+    #   server: 'your_azure_sql_server.database.windows.net'
+    #   database: 'YourProdDataWarehouse'
+    #   schema: 'gold'
+    #   user: 'your_prod_user'
+    #   password: 'your_prod_password'

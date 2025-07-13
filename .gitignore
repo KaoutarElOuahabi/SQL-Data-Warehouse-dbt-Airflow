@@ -1,0 +1,44 @@
+
+# .gitignore
+# Fichiers et dossiers à ignorer par Git pour le projet Data Engineering
+
+# --- Variables d'environnement et Secrets ---
+.env # Très important : ne jamais commiter les variables d'environnement locales !
+.env.local # Pour les variantes locales du fichier .env
+*.env # Généralise pour tout fichier .env.*
+
+# --- Dossiers générés par les outils ---
+**/__pycache__/ # Caches Python
+**/.pytest_cache/ # Cache de pytest (si utilisé)
+**/target/ # Dossier de compilation de dbt (très important !)
+**/dbt_packages/ # Paquets dbt externes téléchargés
+**/logs/ # Logs d'Airflow et autres logs (ex: airflow/logs)
+**/tmp/ # Dossiers temporaires
+**/temp/ # Dossiers temporaires
+**/webserver_config.pyc # Fichier de config Airflow compilé
+
+# --- Fichiers spécifiques au système d'exploitation et IDEs ---
+.DS_Store # macOS
+.vscode/ # Configurations VS Code
+.idea/ # Configurations IntelliJ/PyCharm
+*.iml # Fichiers de modules IntelliJ
+npm-debug.log* # Logs Node (si vous utilisez npm pour des outils front-end liés à l'interface)
+yarn-debug.log*
+yarn-error.log*
+
+# --- Fichiers Docker ---
+# Les images Docker sont construites, pas versionnées dans Git
+
+# --- Données brutes (optionnel, selon votre stratégie) ---
+# data/ # Si vous voulez ignorer tout le dossier data/
+
+# --- Artifacts de build et de déploiement ---
+*.zip
+*.tar.gz
+*.egg-info/
+*.egg
+
+# --- Fichiers de sauvegarde / temporaires ---
+*~ # Fichiers de sauvegarde de certains éditeurs de texte
+*.bak # Fichiers de sauvegarde de base de données
+*.swp # Fichiers de swap de Vim
